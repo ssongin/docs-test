@@ -58,7 +58,7 @@ In the consuming repository, go to **Settings → Pages** and choose **Deploy fr
 | New PR commit | Rebuild that PR's preview and update the existing comment |
 | PR merged or closed | Remove `/pr-N/` and mark the preview comment as removed |
 
-The reusable workflow serializes publishing per repository to avoid simultaneous jobs overwriting each other's changes. A main-site publish preserves existing `pr-*` and `versions/` folders; each PR or tagged-version publish changes only its own folder. After each publish or PR cleanup, it regenerates `versions.json` from the folders still present on the Pages branch. The version selector uses this manifest to offer the latest docs, published tags, and active same-repository PR previews.
+The reusable workflow serializes publishing per repository to avoid simultaneous jobs overwriting each other's changes. A main-site publish preserves existing `pr-*` and `versions/` folders; each PR or tagged-version publish changes only its own folder. Every publish also removes `pr-*` folders for PRs that are no longer open, so a canceled close-event run cannot leave a stale preview published. It then regenerates `versions.json` from the folders still present on the Pages branch. The version selector uses this manifest to offer the latest docs, published tags, and active same-repository PR previews.
 
 The version-bump workflow uses the commit message to select a semantic version increment. It does not create a tag for `docs` or `test` commits, and requires a supported Conventional Commit header for other commit types. The tag is deployed in the same workflow run because a tag push made with `GITHUB_TOKEN` does not trigger a separate `push` workflow.
 
