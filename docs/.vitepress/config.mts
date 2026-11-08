@@ -5,6 +5,18 @@ export default defineConfig({
   description: 'Reusable static documentation and GitHub Pages publishing for any repository.',
   lang: 'en-US',
   base: process.env.DOCS_BASE || '/',
+  vite: {
+    define: {
+      __DOCS_VERSION_MANIFEST_URL__: JSON.stringify(
+        process.env.DOCS_PAGES_URL
+          ? new URL(
+            'versions.json',
+            `${process.env.DOCS_PAGES_URL.replace(/\/+$/, '')}/`
+          ).toString()
+          : ''
+      )
+    }
+  },
   srcExclude: ['README.md', '_sidebar.md'],
   themeConfig: {
     siteTitle: 'gh-docs',

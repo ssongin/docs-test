@@ -37,6 +37,11 @@ on:
         required: false
         default: gh-pages
         type: string
+      deployment_path:
+        description: Optional subdirectory for a versioned documentation deployment.
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: docs-pages-${{ github.repository }}
@@ -54,6 +59,7 @@ jobs:
         if: github.event_name != 'pull_request' || github.event.action != 'closed'
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up Node.js
@@ -75,6 +81,7 @@ jobs:
           PAGES_URL: ${{ inputs.pages_url }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
+          DEPLOYMENT_PATH: ${{ inputs.deployment_path }}
         run: |
           node <<'NODE'
           const siteUrl = new URL(process.env.PAGES_URL)
@@ -89,10 +96,22 @@ jobs:
             throw new Error('A valid pull request number is required')
           }
 
-          const targetPath = isPullRequest ? `pr-${prNumber}` : ''
+          const requestedPath = process.env.DEPLOYMENT_PATH
+          const targetPath = isPullRequest ? `pr-${prNumber}` : requestedPath
+          if (isPullRequest && requestedPath) {
+            throw new Error('deployment_path cannot be set for pull requests')
+          }
+          if (targetPath && !(
+            (isPullRequest && /^pr-\d+$/.test(targetPath)) ||
+            (!isPullRequest && /^versions\/v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(targetPath))
+          )) {
+            throw new Error(`Unsupported deployment path: ${targetPath}`)
+          }
           const base = `${sitePath}/${targetPath ? `${targetPath}/` : ''}` || '/'
           const previewUrl = targetPath
-            ? new URL(`${targetPath}/`, `${siteUrl.origin}${sitePath}/`).toString()
+            ? isPullRequest
+              ? new URL(`${targetPath}/`, `${siteUrl.origin}${sitePath}/`).toString()
+              : ''
             : ''
 
           const fs = require('node:fs')
@@ -107,6 +126,7 @@ jobs:
         env:
           DOCS_BASE: ${{ steps.site.outputs.base }}
           DOCS_PREVIEW: ${{ github.event_name == 'pull_request' }}
+          DOCS_PAGES_URL: ${{ inputs.pages_url }}
           DOCS_DIR: ${{ inputs.docs_dir }}
           BUILD_COMMAND: ${{ inputs.build_command }}
           DIST_DIR: ${{ inputs.dist_dir }}
@@ -163,8 +183,10 @@ jobs:
         shell: bash
         run: |
           if [[ -n "$TARGET_PATH" && ! "$TARGET_PATH" =~ ^pr-[0-9]+$ ]]; then
-            echo "Refusing unexpected deployment path: $TARGET_PATH" >&2
-            exit 1
+            if [[ ! "$TARGET_PATH" =~ ^versions/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+              echo "Refusing unexpected deployment path: $TARGET_PATH" >&2
+              exit 1
+            fi
           fi
 
           if [[ "$IS_CLOSED_PR" == "true" ]]; then
@@ -175,8 +197,38 @@ jobs:
             mkdir -p "$PUBLISH_DIR/$TARGET_PATH"
             rsync -a --delete "$DIST_DIR"/ "$PUBLISH_DIR/$TARGET_PATH"/
           else
-            rsync -a --delete --exclude='/.git/' --exclude='/pr-*/' "$DIST_DIR"/ "$PUBLISH_DIR"/
+            rsync -a --delete --exclude='/.git/' --exclude='/pr-*/' --exclude='/versions/' "$DIST_DIR"/ "$PUBLISH_DIR"/
           fi
+
+          node - "$PUBLISH_DIR" <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+          const root = process.argv[2]
+          const versions = [{ label: 'Latest (master)', path: '' }]
+          const releasesDir = path.join(root, 'versions')
+          if (fs.existsSync(releasesDir)) {
+            const releases = fs.readdirSync(releasesDir, { withFileTypes: true })
+              .filter(entry => entry.isDirectory() && /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(entry.name))
+              .map(entry => entry.name)
+              .sort((left, right) => {
+                const a = left.slice(1).split('.').map(Number)
+                const b = right.slice(1).split('.').map(Number)
+                for (let index = 0; index < 3; index++) {
+                  if (a[index] !== b[index]) return b[index] - a[index]
+                }
+                return 0
+              })
+            for (const tag of releases) {
+              versions.push({ label: tag, path: `versions/${tag}/` })
+            }
+          }
+          for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+            if (entry.isDirectory() && /^pr-\d+$/.test(entry.name)) {
+              versions.push({ label: `PR #${entry.name.slice(3)}`, path: `${entry.name}/` })
+            }
+          }
+          fs.writeFileSync(path.join(root, 'versions.json'), `${JSON.stringify(versions, null, 2)}\n`)
+          NODE
 
           git -C "$PUBLISH_DIR" rev-parse --git-dir
           git -C "$PUBLISH_DIR" add --all
@@ -191,7 +243,11 @@ jobs:
           if [[ "$IS_CLOSED_PR" == "true" ]]; then
             git -C "$PUBLISH_DIR" commit -m "Remove preview for PR #${{ github.event.pull_request.number }}"
           elif [[ -n "$TARGET_PATH" ]]; then
-            git -C "$PUBLISH_DIR" commit -m "Deploy preview for PR #${{ github.event.pull_request.number }}"
+            if [[ "$TARGET_PATH" =~ ^pr- ]]; then
+              git -C "$PUBLISH_DIR" commit -m "Deploy preview for PR #${{ github.event.pull_request.number }}"
+            else
+              git -C "$PUBLISH_DIR" commit -m "Deploy documentation version $TARGET_PATH"
+            fi
           else
             git -C "$PUBLISH_DIR" commit -m "Deploy documentation from ${GITHUB_SHA}"
           fi
