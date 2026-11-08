@@ -203,31 +203,71 @@ jobs:
           node - "$PUBLISH_DIR" <<'NODE'
           const fs = require('node:fs')
           const path = require('node:path')
-          const root = process.argv[2]
-          const versions = [{ label: 'Latest (master)', path: '' }]
-          const releasesDir = path.join(root, 'versions')
-          if (fs.existsSync(releasesDir)) {
-            const releases = fs.readdirSync(releasesDir, { withFileTypes: true })
-              .filter(entry => entry.isDirectory() && /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(entry.name))
-              .map(entry => entry.name)
-              .sort((left, right) => {
-                const a = left.slice(1).split('.').map(Number)
-                const b = right.slice(1).split('.').map(Number)
-                for (let index = 0; index < 3; index++) {
-                  if (a[index] !== b[index]) return b[index] - a[index]
+          const root = path.resolve(process.argv[2])
+
+          async function main() {
+            const apiBase = `${process.env.GITHUB_API_URL.replace(/\/+$/, '')}/`
+            const openPullRequests = new Set()
+            let page = 1
+            while (true) {
+              const url = new URL(`repos/${process.env.GITHUB_REPOSITORY}/pulls`, apiBase)
+              url.searchParams.set('state', 'open')
+              url.searchParams.set('per_page', '100')
+              url.searchParams.set('page', String(page))
+              const response = await fetch(url, {
+                headers: {
+                  accept: 'application/vnd.github+json',
+                  authorization: `Bearer ${process.env.GH_TOKEN}`,
+                  'x-github-api-version': '2022-11-28'
                 }
-                return 0
               })
-            for (const tag of releases) {
-              versions.push({ label: tag, path: `versions/${tag}/` })
+              if (!response.ok) {
+                throw new Error(`Unable to list open pull requests: ${response.status} ${response.statusText}`)
+              }
+              const pulls = await response.json()
+              for (const pull of pulls) openPullRequests.add(String(pull.number))
+              if (pulls.length < 100) break
+              page++
             }
-          }
-          for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-            if (entry.isDirectory() && /^pr-\d+$/.test(entry.name)) {
-              versions.push({ label: `PR #${entry.name.slice(3)}`, path: `${entry.name}/` })
+
+            for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+              const match = /^pr-(\d+)$/.exec(entry.name)
+              if (entry.isDirectory() && match && !openPullRequests.has(match[1])) {
+                fs.rmSync(path.join(root, entry.name), { recursive: true, force: true })
+                console.log(`Removed stale preview ${entry.name}`)
+              }
             }
+
+            const versions = [{ label: 'Latest (master)', path: '' }]
+            const releasesDir = path.join(root, 'versions')
+            if (fs.existsSync(releasesDir)) {
+              const releases = fs.readdirSync(releasesDir, { withFileTypes: true })
+                .filter(entry => entry.isDirectory() && /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(entry.name))
+                .map(entry => entry.name)
+                .sort((left, right) => {
+                  const a = left.slice(1).split('.').map(Number)
+                  const b = right.slice(1).split('.').map(Number)
+                  for (let index = 0; index < 3; index++) {
+                    if (a[index] !== b[index]) return b[index] - a[index]
+                  }
+                  return 0
+                })
+              for (const tag of releases) {
+                versions.push({ label: tag, path: `versions/${tag}/` })
+              }
+            }
+            for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+              if (entry.isDirectory() && /^pr-\d+$/.test(entry.name)) {
+                versions.push({ label: `PR #${entry.name.slice(3)}`, path: `${entry.name}/` })
+              }
+            }
+            fs.writeFileSync(path.join(root, 'versions.json'), `${JSON.stringify(versions, null, 2)}\n`)
           }
-          fs.writeFileSync(path.join(root, 'versions.json'), `${JSON.stringify(versions, null, 2)}\n`)
+
+          main().catch(error => {
+            console.error(error)
+            process.exitCode = 1
+          })
           NODE
 
           git -C "$PUBLISH_DIR" rev-parse --git-dir
