@@ -8,6 +8,8 @@ interface DocumentationVersion {
   path: string
 }
 
+const manifestUrl = __DOCS_VERSION_MANIFEST_URL__
+
 function isDocumentationVersion(value: unknown): value is DocumentationVersion {
   return value !== null &&
     typeof value === 'object' &&
@@ -23,10 +25,10 @@ const currentDocumentPath = ref('')
 const error = ref('')
 
 onMounted(async () => {
-  if (!__DOCS_VERSION_MANIFEST_URL__) return
+  if (!manifestUrl) return
 
   try {
-    const response = await fetch(__DOCS_VERSION_MANIFEST_URL__, { cache: 'no-store' })
+    const response = await fetch(manifestUrl, { cache: 'no-store' })
     if (!response.ok) {
       throw new Error(`Version manifest request failed with status ${response.status}`)
     }
@@ -37,7 +39,7 @@ onMounted(async () => {
     }
 
     versions.value = payload
-    const pagesUrl = new URL(__DOCS_VERSION_MANIFEST_URL__)
+    const pagesUrl = new URL(manifestUrl)
     const currentPath = window.location.pathname
     const currentVersion = versions.value
       .filter(version => {
@@ -59,8 +61,8 @@ onMounted(async () => {
 })
 
 function navigateToVersion() {
-  if (!selectedPath.value || !__DOCS_VERSION_MANIFEST_URL__) return
-  const destination = new URL(selectedPath.value, __DOCS_VERSION_MANIFEST_URL__)
+  if (!selectedPath.value || !manifestUrl) return
+  const destination = new URL(selectedPath.value, manifestUrl)
   if (currentDocumentPath.value) {
     destination.pathname = `${destination.pathname.replace(/\/?$/, '/')}${currentDocumentPath.value}`
   }
@@ -71,7 +73,7 @@ function navigateToVersion() {
 </script>
 
 <template>
-  <label v-if="__DOCS_VERSION_MANIFEST_URL__" class="version-selector">
+  <label v-if="manifestUrl" class="version-selector">
     <span class="sr-only">Documentation version</span>
     <select
       v-model="selectedPath"
