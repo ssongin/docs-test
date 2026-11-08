@@ -122,25 +122,38 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PAGES_BRANCH: ${{ inputs.pages_branch }}
+          PUBLISH_DIR: ${{ runner.temp }}/gh-pages-publish
         shell: bash
         run: |
-          mkdir publish
-          git -C publish init --initial-branch="$PAGES_BRANCH"
-          git -C publish config user.name "github-actions[bot]"
-          git -C publish config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git check-ref-format --branch "$PAGES_BRANCH"
+          case "$PUBLISH_DIR/" in
+            "$GITHUB_WORKSPACE/"*)
+              echo "Publishing repository must be outside the source checkout." >&2
+              exit 1
+              ;;
+          esac
+          mkdir "$PUBLISH_DIR"
+          git init --initial-branch="$PAGES_BRANCH" "$PUBLISH_DIR"
+          test "$(git -C "$PUBLISH_DIR" rev-parse --show-toplevel)" = "$PUBLISH_DIR"
+          git -C "$PUBLISH_DIR" config user.name "github-actions[bot]"
+          git -C "$PUBLISH_DIR" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           remote="https://github.com/${GITHUB_REPOSITORY}.git"
           auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
           if git -c http.extraheader="$auth_header" ls-remote --exit-code "$remote" "refs/heads/$PAGES_BRANCH" >/dev/null; then
-            git -C publish -c http.extraheader="$auth_header" fetch --depth=1 "$remote" "$PAGES_BRANCH"
-            git -C publish checkout -B "$PAGES_BRANCH" FETCH_HEAD
+            git -C "$PUBLISH_DIR" -c http.extraheader="$auth_header" fetch --depth=1 "$remote" "$PAGES_BRANCH"
+            git -C "$PUBLISH_DIR" checkout -B "$PAGES_BRANCH" FETCH_HEAD
+          else
+            git -C "$PUBLISH_DIR" symbolic-ref HEAD "refs/heads/$PAGES_BRANCH"
           fi
+          test "$(git -C "$PUBLISH_DIR" symbolic-ref --short HEAD)" = "$PAGES_BRANCH"
 
       - name: Update site or remove closed preview
         env:
           TARGET_PATH: ${{ steps.site.outputs.target_path }}
           PAGES_BRANCH: ${{ inputs.pages_branch }}
           DIST_DIR: ${{ inputs.dist_dir }}
+          PUBLISH_DIR: ${{ runner.temp }}/gh-pages-publish
           GH_TOKEN: ${{ github.token }}
           IS_CLOSED_PR: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' }}
           GIT_AUTHOR_NAME: github-actions[bot]
@@ -155,36 +168,36 @@ jobs:
           fi
 
           if [[ "$IS_CLOSED_PR" == "true" ]]; then
-            if [[ -d "publish/$TARGET_PATH" ]]; then
-              rm -rf -- "publish/$TARGET_PATH"
+            if [[ -d "$PUBLISH_DIR/$TARGET_PATH" ]]; then
+              rm -rf -- "$PUBLISH_DIR/$TARGET_PATH"
             fi
           elif [[ -n "$TARGET_PATH" ]]; then
-            mkdir -p "publish/$TARGET_PATH"
-            rsync -a --delete "$DIST_DIR"/ "publish/$TARGET_PATH"/
+            mkdir -p "$PUBLISH_DIR/$TARGET_PATH"
+            rsync -a --delete "$DIST_DIR"/ "$PUBLISH_DIR/$TARGET_PATH"/
           else
-            rsync -a --delete --exclude='/pr-*/' "$DIST_DIR"/ publish/
+            rsync -a --delete --exclude='/pr-*/' "$DIST_DIR"/ "$PUBLISH_DIR"/
           fi
 
-          git -C publish add --all
-          if git -C publish diff --cached --quiet; then
+          git -C "$PUBLISH_DIR" add --all
+          if git -C "$PUBLISH_DIR" diff --cached --quiet; then
             echo "Pages content is already up to date."
             exit 0
           fi
 
-          git -C publish var GIT_AUTHOR_IDENT
-          git -C publish var GIT_COMMITTER_IDENT
+          git -C "$PUBLISH_DIR" var GIT_AUTHOR_IDENT
+          git -C "$PUBLISH_DIR" var GIT_COMMITTER_IDENT
 
           if [[ "$IS_CLOSED_PR" == "true" ]]; then
-            git -C publish commit -m "Remove preview for PR #${{ github.event.pull_request.number }}"
+            git -C "$PUBLISH_DIR" commit -m "Remove preview for PR #${{ github.event.pull_request.number }}"
           elif [[ -n "$TARGET_PATH" ]]; then
-            git -C publish commit -m "Deploy preview for PR #${{ github.event.pull_request.number }}"
+            git -C "$PUBLISH_DIR" commit -m "Deploy preview for PR #${{ github.event.pull_request.number }}"
           else
-            git -C publish commit -m "Deploy documentation from ${GITHUB_SHA}"
+            git -C "$PUBLISH_DIR" commit -m "Deploy documentation from ${GITHUB_SHA}"
           fi
 
           remote="https://github.com/${GITHUB_REPOSITORY}.git"
           auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
-          git -C publish -c http.extraheader="$auth_header" push "$remote" "$PAGES_BRANCH"
+          git -C "$PUBLISH_DIR" -c http.extraheader="$auth_header" push "$remote" "HEAD:refs/heads/$PAGES_BRANCH"
 
       - name: Add or update PR preview comment
         if: github.event_name == 'pull_request' && github.event.action != 'closed'
