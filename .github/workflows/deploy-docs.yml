@@ -16,6 +16,29 @@ permissions:
   pull-requests: write
 
 jobs:
+  extract-commit-message:
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      commit_message: ${{ steps.commit.outputs.message }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/head
+      - id: commit
+        run: echo "message=$(git log -1 --format=%s)" >> "$GITHUB_OUTPUT"
+
+  validate-commit-message:
+    needs: extract-commit-message
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    permissions:
+      contents: read
+    uses: ssongin/gha-commit/.github/workflows/validate-commit-message.yml@master
+    with:
+      commit_message: ${{ needs.extract-commit-message.outputs.commit_message }}
+
   deploy:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/publish-docs.yml
