@@ -1,0 +1,52 @@
+name: Deploy documentation
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    types:
+      - closed
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump-version-tag:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && github.event.head_commit != null
+    permissions:
+      contents: write
+    uses: ssongin/gha-commit/.github/workflows/bump-version-tag.yml@master
+
+  publish-tagged-docs:
+    needs: bump-version-tag
+    if: needs.bump-version-tag.outputs.tag != ''
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: ./.github/workflows/publish-docs.yml
+    with:
+      pages_url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+      docs_dir: docs
+      dist_dir: docs/.vitepress/dist
+      install_command: npm ci --prefix docs
+      build_command: npm --prefix docs run docs:build
+      node_version: '22'
+      pages_branch: gh-pages
+      deployment_path: versions/${{ needs.bump-version-tag.outputs.tag }}
+
+  publish-docs:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    uses: ./.github/workflows/publish-docs.yml
+    with:
+      pages_url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+      docs_dir: docs
+      dist_dir: docs/.vitepress/dist
+      install_command: npm ci --prefix docs
+      build_command: npm --prefix docs run docs:build
+      node_version: '22'
+      pages_branch: gh-pages
+      deployment_path: ${{ startsWith(github.ref, 'refs/tags/v') && format('versions/{0}', github.ref_name) || '' }}
