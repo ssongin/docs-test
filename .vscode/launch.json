@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node-terminal",
+      "name": "Build documentation",
+      "request": "launch",
+      "command": "npm run docs:build",
+      "cwd": "${workspaceFolder}\\docs"
+    },
+    {
+      "type": "node-terminal",
+      "name": "Run documentation locally",
+      "request": "launch",
+      "command": "npm run docs:dev",
+      "cwd": "${workspaceFolder}\\docs"
+    }
+  ]
+}

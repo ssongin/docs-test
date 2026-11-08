@@ -1,0 +1,33 @@
+name: Validate and deploy pull request documentation
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+
+jobs:
+  validate-commit-message:
+    permissions:
+      contents: read
+    uses: ssongin/gha-commit/.github/workflows/validate-commit-message.yml@master
+
+  publish-docs:
+    needs: validate-commit-message
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: ./.github/workflows/publish-docs.yml
+    with:
+      pages_url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+      docs_dir: docs
+      dist_dir: docs/.vitepress/dist
+      install_command: npm ci --prefix docs
+      build_command: npm --prefix docs run docs:build
+      node_version: '22'
+      pages_branch: gh-pages
