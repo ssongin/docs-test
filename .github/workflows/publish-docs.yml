@@ -1,0 +1,228 @@
+name: Documentation publishing
+
+on:
+  workflow_call:
+    inputs:
+      pages_url:
+        description: Canonical GitHub Pages URL, including any repository path.
+        required: true
+        type: string
+      docs_dir:
+        description: Documentation source directory.
+        required: false
+        default: docs
+        type: string
+      dist_dir:
+        description: Build output directory.
+        required: false
+        default: docs/.vitepress/dist
+        type: string
+      install_command:
+        description: Dependency install command; use an empty string to skip.
+        required: false
+        default: npm ci --prefix "$DOCS_DIR"
+        type: string
+      build_command:
+        description: Static site build command.
+        required: false
+        default: npm --prefix "$DOCS_DIR" run docs:build
+        type: string
+      node_version:
+        description: Node.js version used by the build.
+        required: false
+        default: '22'
+        type: string
+      pages_branch:
+        description: Branch used to publish the combined site and previews.
+        required: false
+        default: gh-pages
+        type: string
+
+concurrency:
+  group: docs-pages-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out source
+        if: github.event_name != 'pull_request' || github.event.action != 'closed'
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        if: github.event_name != 'pull_request' || github.event.action != 'closed'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Install dependencies
+        if: (github.event_name != 'pull_request' || github.event.action != 'closed') && inputs.install_command != ''
+        env:
+          DOCS_DIR: ${{ inputs.docs_dir }}
+        shell: bash
+        run: ${{ inputs.install_command }}
+
+      - name: Compute site paths
+        id: site
+        env:
+          PAGES_URL: ${{ inputs.pages_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
+        run: |
+          node <<'NODE'
+          const siteUrl = new URL(process.env.PAGES_URL)
+          if (!['http:', 'https:'].includes(siteUrl.protocol)) {
+            throw new Error('pages_url must be an HTTP or HTTPS URL')
+          }
+
+          const sitePath = siteUrl.pathname.replace(/\/+$/, '')
+          const isPullRequest = process.env.IS_PULL_REQUEST === 'true'
+          const prNumber = process.env.PR_NUMBER
+          if (isPullRequest && !/^\d+$/.test(prNumber || '')) {
+            throw new Error('A valid pull request number is required')
+          }
+
+          const targetPath = isPullRequest ? `pr-${prNumber}` : ''
+          const base = `${sitePath}/${targetPath ? `${targetPath}/` : ''}` || '/'
+          const previewUrl = targetPath
+            ? new URL(`${targetPath}/`, `${siteUrl.origin}${sitePath}/`).toString()
+            : ''
+
+          const fs = require('node:fs')
+          fs.appendFileSync(
+            process.env.GITHUB_OUTPUT,
+            `base=${base}\ntarget_path=${targetPath}\npreview_url=${previewUrl}\n`
+          )
+          NODE
+
+      - name: Build static documentation
+        if: github.event_name != 'pull_request' || github.event.action != 'closed'
+        env:
+          DOCS_BASE: ${{ steps.site.outputs.base }}
+          DOCS_PREVIEW: ${{ github.event_name == 'pull_request' }}
+          DOCS_DIR: ${{ inputs.docs_dir }}
+          BUILD_COMMAND: ${{ inputs.build_command }}
+          DIST_DIR: ${{ inputs.dist_dir }}
+        shell: bash
+        run: |
+          bash -eo pipefail -c "$BUILD_COMMAND"
+          if [[ ! -d "$DIST_DIR" ]]; then
+            echo "Build output directory does not exist: $DIST_DIR" >&2
+            exit 1
+          fi
+
+      - name: Check out or initialize Pages branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PAGES_BRANCH: ${{ inputs.pages_branch }}
+        shell: bash
+        run: |
+          mkdir publish
+          git -C publish init --initial-branch="$PAGES_BRANCH"
+          git -C publish config user.name "github-actions[bot]"
+          git -C publish config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          remote="https://github.com/${GITHUB_REPOSITORY}.git"
+          auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          if git -c http.extraheader="$auth_header" ls-remote --exit-code "$remote" "refs/heads/$PAGES_BRANCH" >/dev/null; then
+            git -C publish -c http.extraheader="$auth_header" fetch --depth=1 "$remote" "$PAGES_BRANCH"
+            git -C publish checkout -B "$PAGES_BRANCH" FETCH_HEAD
+          fi
+
+      - name: Update site or remove closed preview
+        env:
+          TARGET_PATH: ${{ steps.site.outputs.target_path }}
+          PAGES_BRANCH: ${{ inputs.pages_branch }}
+          DIST_DIR: ${{ inputs.dist_dir }}
+          GH_TOKEN: ${{ github.token }}
+          IS_CLOSED_PR: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' }}
+        shell: bash
+        run: |
+          if [[ -n "$TARGET_PATH" && ! "$TARGET_PATH" =~ ^pr-[0-9]+$ ]]; then
+            echo "Refusing unexpected deployment path: $TARGET_PATH" >&2
+            exit 1
+          fi
+
+          if [[ "$IS_CLOSED_PR" == "true" ]]; then
+            if [[ -d "publish/$TARGET_PATH" ]]; then
+              rm -rf -- "publish/$TARGET_PATH"
+            fi
+          elif [[ -n "$TARGET_PATH" ]]; then
+            mkdir -p "publish/$TARGET_PATH"
+            rsync -a --delete "$DIST_DIR"/ "publish/$TARGET_PATH"/
+          else
+            rsync -a --delete --exclude='/pr-*/' "$DIST_DIR"/ publish/
+          fi
+
+          git -C publish add --all
+          if git -C publish diff --cached --quiet; then
+            echo "Pages content is already up to date."
+            exit 0
+          fi
+
+          if [[ "$IS_CLOSED_PR" == "true" ]]; then
+            git -C publish commit -m "Remove preview for PR #${{ github.event.pull_request.number }}"
+          elif [[ -n "$TARGET_PATH" ]]; then
+            git -C publish commit -m "Deploy preview for PR #${{ github.event.pull_request.number }}"
+          else
+            git -C publish commit -m "Deploy documentation from ${GITHUB_SHA}"
+          fi
+
+          remote="https://github.com/${GITHUB_REPOSITORY}.git"
+          auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -C publish -c http.extraheader="$auth_header" push "$remote" "$PAGES_BRANCH"
+
+      - name: Add or update PR preview comment
+        if: github.event_name == 'pull_request' && github.event.action != 'closed'
+        uses: actions/github-script@v7
+        env:
+          PREVIEW_URL: ${{ steps.site.outputs.preview_url }}
+        with:
+          script: |
+            const marker = '<!-- docs-preview-link -->'
+            const body = `${marker}\n📖 Documentation preview: ${process.env.PREVIEW_URL}`
+            const { owner, repo } = context.repo
+            const issue_number = context.issue.number
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number, per_page: 100
+            })
+            const existing = comments.find(comment =>
+              comment.user.type === 'Bot' && comment.body.includes(marker)
+            )
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body
+              })
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body })
+            }
+
+      - name: Mark closed PR preview as removed
+        if: github.event_name == 'pull_request' && github.event.action == 'closed'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- docs-preview-link -->'
+            const { owner, repo } = context.repo
+            const issue_number = context.issue.number
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number, per_page: 100
+            })
+            const existing = comments.find(comment =>
+              comment.user.type === 'Bot' && comment.body.includes(marker)
+            )
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id,
+                body: `${marker}\n🧹 Documentation preview removed because this PR is closed.`
+              })
+            }
