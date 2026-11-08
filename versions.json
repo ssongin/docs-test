@@ -10,9 +10,5 @@
   {
     "label": "v0.1.0",
     "path": "versions/v0.1.0/"
-  },
-  {
-    "label": "PR #7",
-    "path": "pr-7/"
   }
 ]
