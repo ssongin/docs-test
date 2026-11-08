@@ -3,7 +3,7 @@
 The deployment uses two workflows:
 
 1. A small **caller workflow** listens for repository events and passes project-specific settings.
-2. The **reusable workflow** builds the static site, updates the Pages branch, comments on PRs, and removes closed PR previews.
+2. The reusable `.github/workflows/publish-docs.yml` builds the static site, updates the Pages branch, comments on PRs, and removes closed PR previews.
 
 ## Add the caller workflow
 
@@ -25,7 +25,7 @@ permissions:
 jobs:
   deploy:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    uses: ssongin/gh-docs/.github/workflows/reusable-docs-pages.yml@master
+    uses: OWNER/gh-docs/.github/workflows/publish-docs.yml@master
     with:
       pages_url: https://OWNER.github.io/REPOSITORY/
       docs_dir: docs
@@ -36,10 +36,10 @@ jobs:
       pages_branch: gh-pages
 ```
 
-Replace `OWNER/gh-docs` with the account and repository that host the reusable workflow. Replace `OWNER/REPOSITORY` with the GitHub Pages URL for the application repo. To use a copied workflow instead, change `uses` to:
+Replace `OWNER` with the account that owns gh-docs, and `REPOSITORY` with the application repository name. To use a copied workflow instead, change `uses` to:
 
 ```yaml
-uses: ./.github/workflows/reusable-docs-pages.yml
+uses: ./.github/workflows/publish-docs.yml
 ```
 
 Using `@master` tracks changes to the reusable workflow. For controlled upgrades, use a full commit SHA instead.
@@ -68,6 +68,10 @@ The `pages_url` input must be the canonical Pages URL, including the repository 
 ## Fork pull requests
 
 Fork PR previews are skipped by default. GitHub does not provide the write token required to publish pages or comment on a PR from a fork. Keep the condition in the example; do not run untrusted fork code with a privileged publishing token.
+
+## Git commit reports an unknown author
+
+The publishing workflow sets the Git author and committer identity explicitly in the commit step. If you maintain a copy of the workflow, keep `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, and `GIT_COMMITTER_EMAIL` set for the step that runs `git commit`.
 
 ## Use another static site generator
 

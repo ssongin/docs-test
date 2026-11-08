@@ -143,6 +143,10 @@ jobs:
           DIST_DIR: ${{ inputs.dist_dir }}
           GH_TOKEN: ${{ github.token }}
           IS_CLOSED_PR: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         shell: bash
         run: |
           if [[ -n "$TARGET_PATH" && ! "$TARGET_PATH" =~ ^pr-[0-9]+$ ]]; then
@@ -166,6 +170,9 @@ jobs:
             echo "Pages content is already up to date."
             exit 0
           fi
+
+          git -C publish var GIT_AUTHOR_IDENT
+          git -C publish var GIT_COMMITTER_IDENT
 
           if [[ "$IS_CLOSED_PR" == "true" ]]; then
             git -C publish commit -m "Remove preview for PR #${{ github.event.pull_request.number }}"

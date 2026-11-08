@@ -22,6 +22,6 @@ The pages are static output, so GitHub Pages does not run a Node.js server. Fork
 | `docs/` | Documentation source and VitePress project |
 | `docs/.vitepress/config.mts` | Site title, sidebar, navigation, and base path |
 | `.github/workflows/deploy-docs.yml` | This repository's deployment trigger and settings |
-| `.github/workflows/reusable-docs-pages.yml` | Reusable build, publish, PR-comment, and cleanup workflow |
+| `.github/workflows/publish-docs.yml` | Reusable build, publish, PR-comment, and cleanup workflow |
 
 Continue to [Consumers](consumers/) for setup instructions.
