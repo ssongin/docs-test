@@ -175,9 +175,10 @@ jobs:
             mkdir -p "$PUBLISH_DIR/$TARGET_PATH"
             rsync -a --delete "$DIST_DIR"/ "$PUBLISH_DIR/$TARGET_PATH"/
           else
-            rsync -a --delete --exclude='/pr-*/' "$DIST_DIR"/ "$PUBLISH_DIR"/
+            rsync -a --delete --exclude='/.git/' --exclude='/pr-*/' "$DIST_DIR"/ "$PUBLISH_DIR"/
           fi
 
+          git -C "$PUBLISH_DIR" rev-parse --git-dir
           git -C "$PUBLISH_DIR" add --all
           if git -C "$PUBLISH_DIR" diff --cached --quiet; then
             echo "Pages content is already up to date."

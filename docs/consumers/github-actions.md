@@ -73,6 +73,10 @@ Fork PR previews are skipped by default. GitHub does not provide the write token
 
 The publishing workflow sets the Git author and committer identity explicitly in the commit step. If you maintain a copy of the workflow, keep `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, and `GIT_COMMITTER_EMAIL` set for the step that runs `git commit`.
 
+## Publishing reports that it is not a Git repository
+
+The production build is synced into the root of the Pages checkout. The `rsync` command must exclude `/.git/`; otherwise `--delete` removes the repository metadata before Git can stage the published files.
+
 ## Use another static site generator
 
 The reusable workflow accepts custom `install_command`, `build_command`, `dist_dir`, and `node_version` values. Point them to your generator's install/build commands and the complete generated static site. Configure that generator to honor the `DOCS_BASE` environment variable for project and PR paths.
