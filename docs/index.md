@@ -3,27 +3,25 @@ layout: home
 
 hero:
   name: gh-docs
-  text: Documentation for any repository
-  tagline: Build static docs, preview pull requests, and publish to GitHub Pages—without adding Node.js files to your project root.
+  text: Documentation for your repository
+  tagline: Write Markdown, publish it to GitHub Pages, and preview changes in pull requests—without adding Node.js files to your application root.
   actions:
     - theme: brand
-      text: Description
+      text: Get started
       link: /description
     - theme: alt
-      text: Consumers
-      link: /consumers/
+      text: VitePress
+      link: https://vitepress.dev/
 
 features:
-  - title: Keep project roots clean
-    details: VitePress and its lockfile live under docs/, so Java, Go, and other projects do not need a root package.json.
-  - title: Preview every active PR
-    details: Same-repository pull requests publish to their own /pr-N/ URL and receive a preview comment.
-  - title: Reuse the publishing workflow
-    details: One workflow builds the site, updates GitHub Pages, and removes closed PR previews.
+  - title: Keep docs with your code
+    details: Write documentation in Markdown under docs/ and review changes alongside your application.
+  - title: Preview pull requests
+    details: Publish temporary previews for active same-repository pull requests.
+  - title: Publish versions
+    details: Keep the latest docs, tagged releases, and active previews available from one site.
 ---
 
-**gh-docs** is a reusable documentation site and GitHub Actions workflow for publishing static documentation to GitHub Pages. The docs project is isolated in `docs/`, making it suitable for Java, Go, and other non-Node repositories.
+gh-docs turns Markdown files into a static website and provides GitHub Actions workflows to publish it to GitHub Pages. The documentation tooling lives under `docs/`, so it does not add Node.js files to your application root.
 
-## Documentation
 
-See the [description](description.md) for an overview, or go to [Consumers](consumers/) for instructions on adding gh-docs to a project, setting up publishing, and running the docs locally.
