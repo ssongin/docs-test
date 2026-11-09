@@ -4,6 +4,10 @@
     "path": ""
   },
   {
+    "label": "v0.1.4",
+    "path": "versions/v0.1.4/"
+  },
+  {
     "label": "v0.1.3",
     "path": "versions/v0.1.3/"
   },
