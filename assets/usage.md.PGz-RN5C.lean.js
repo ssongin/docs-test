@@ -1,0 +1,1 @@
+import{_ as i,o as a,c as e,a3 as t}from"./chunks/framework.Chf5_BT4.js";const c=JSON.parse('{"title":"Usage","description":"","frontmatter":{},"headers":[],"relativePath":"usage.md","filePath":"usage.md"}'),n={name:"usage.md"};function l(p,s,h,d,o,r){return a(),e("div",null,[...s[0]||(s[0]=[t("",29)])])}const g=i(n,[["render",l]]);export{c as __pageData,g as default};
