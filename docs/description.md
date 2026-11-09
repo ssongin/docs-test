@@ -1,30 +1,13 @@
-# Description
+# Description and purpose
 
-**gh-docs** is a reusable setup for writing and publishing repository documentation. It combines:
+**gh-docs** is a way to publish a repository's Markdown documentation as a website. It combines:
 
-- [VitePress](https://vitepress.dev/) to turn Markdown files into static HTML.
-- GitHub Actions to build and publish the site to GitHub Pages.
-- Per-pull-request previews, with a link posted to each supported PR.
-- Automatic cleanup of a preview when its PR is merged or closed.
-- Tagged documentation versions alongside the latest `master` docs.
+- [VitePress](https://vitepress.dev/) to turn Markdown into a static website.
+- GitHub Actions to build and publish that website to GitHub Pages.
+- Pull request previews and tagged documentation versions.
 
-The documentation app and its npm manifest are kept under `docs/`. Repositories written in Java, Go, or other languages do not need a root `package.json`.
+Keep the docs and the application in one repository, so documentation changes can be reviewed with code changes. The VitePress project and its npm dependencies stay under `docs/`; Java, Go, and other applications do not need a `package.json` in their root.
 
-## Publishing model
+The publishing workflow updates a `gh-pages` branch. The current docs are served from the site root, release versions from paths such as `/versions/v1.2.3/`, and active pull request previews from paths such as `/pr-42/`. A navigation selector lets readers switch between the versions that are currently published.
 
-The main branch site is published at the root of the Pages site. Each active same-repository PR gets a subdirectory such as `/pr-42/`. Closing a PR removes only its preview directory. Semantic version tags are published under `/versions/<tag>/`.
-
-The version selector in the site navigation reads `versions.json`, which the publishing workflow regenerates from the directories currently published on the Pages branch. It lists the latest `master` docs, existing tagged versions, and active same-repository PR previews without maintaining a hard-coded list.
-
-The pages are static output, so GitHub Pages does not run a Node.js server. Fork PR previews are skipped by default because their workflows do not have permission to publish or comment.
-
-## Repository contents
-
-| Path | Purpose |
-| --- | --- |
-| `docs/` | Documentation source and VitePress project |
-| `docs/.vitepress/config.mts` | Site title, sidebar, navigation, and base path |
-| `.github/workflows/deploy-docs.yml` | This repository's deployment trigger and settings |
-| `.github/workflows/publish-docs.yml` | Reusable build, publish, PR-comment, and cleanup workflow |
-
-Continue to [Consumers](consumers/) for setup instructions.
+GitHub Pages serves static files, so the published site does not need a running application server. See [Usage](usage.md) to add docs and configure publishing, [Versioning](versioning.md) for the selector and release paths, or [Local run](local-run.md) to preview and build the site on your machine.
